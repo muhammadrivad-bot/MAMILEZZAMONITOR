@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
-"""Dashboard server with periodic refresh from the Mami Lezza Google Sheet.
+"""Dashboard server with (near) live refresh from the Mami Lezza Google Sheet.
 
 Run:  python3 server.py       → http://localhost:3000
-Env:  PORT=8080 REFRESH_SECONDS=300 python3 server.py
+Env:  PORT=8080 REFRESH_SECONDS=1 python3 server.py
 """
 
 from __future__ import annotations
 
 import datetime as dt
+import hashlib
 import json
 import os
 import threading
@@ -21,7 +22,8 @@ import build_data
 ROOT = Path(__file__).resolve().parent
 PUBLIC = ROOT / "public"
 PORT = int(os.environ.get("PORT", "3000"))
-REFRESH_SECONDS = int(os.environ.get("REFRESH_SECONDS", "300"))
+REFRESH_SECONDS = max(1, int(os.environ.get("REFRESH_SECONDS", "1")))
+MAX_BACKOFF_SECONDS = 300
 
 
 def build_area_summary(payload: dict) -> dict:
@@ -71,60 +73,128 @@ def build_area_summary(payload: dict) -> dict:
 
 
 class Store:
+    """Keeps the last good payload and refreshes it in the background.
+
+    A ~100-byte probe detects changes every second; the 2.3 MB CSV is only
+    downloaded when something actually changed. Network work happens outside
+    the state lock, so the API stays fast. An unchanged sheet only bumps the
+    timestamp — the browser does not redraw anything until data really moves.
+    """
+
     def __init__(self) -> None:
         self.lock = threading.Lock()
         self.summary: dict | None = None
         self.last_attempt = 0.0
-        self.last_success = 0.0
+        self.last_hash = ""
+        self.last_probe = ""
+        self.inflight = False
+        self.failures = 0
+        self.interval = REFRESH_SECONDS
         self.status = "loading"
         self.error = ""
 
+    def _stamp(self) -> str:
+        return dt.datetime.now().astimezone().isoformat(timespec="seconds")
+
     def refresh(self, force: bool = False) -> None:
+        # --- quick gate: never block the API on network I/O ---------------
         with self.lock:
             now = time.time()
-            if not force and self.summary is not None and now - self.last_attempt < REFRESH_SECONDS:
+            if self.inflight:
                 return
+            if not force and self.summary is not None and now - self.last_attempt < self.interval:
+                return
+            self.inflight = True
             self.last_attempt = now
+
+        try:
+            # 1) Probe murah (~100 byte). Kalau gagal, tetap cek penuh.
             try:
-                text = build_data.fetch_csv()
-                payload = build_data.build_payload(text)
-                try:
-                    build_data.write_data_file(payload)
-                except Exception as file_exc:
-                    print(f"[{dt.datetime.now():%H:%M:%S}] Gagal menulis data.js: {file_exc}", flush=True)
-                summary = build_area_summary(payload)
-                summary["server"] = {
-                    "refreshedAt": dt.datetime.now().astimezone().isoformat(timespec="seconds"),
-                    "refreshSeconds": REFRESH_SECONDS,
-                    "nextRefreshAt": time.time() + REFRESH_SECONDS,
-                    "status": "ok",
-                    "error": "",
-                }
+                probe = build_data.probe_sheet()
+            except Exception:
+                probe = ""
+
+            with self.lock:
+                if probe and self.summary and probe == self.last_probe:
+                    # Sheet belum berubah — cukup perbarui waktu pengecekan.
+                    now_str = self._stamp()
+                    s = dict(self.summary["server"])
+                    s.update(refreshedAt=now_str, checkedAt=now_str,
+                             status="ok", error="", refreshSeconds=REFRESH_SECONDS)
+                    self.summary["server"] = s
+                    self.failures = 0
+                    self.interval = REFRESH_SECONDS
+                    self.status = "ok"
+                    self.error = ""
+                    return
+
+            # 2) Ada perubahan → unduh CSV lengkap.
+            text = build_data.fetch_csv(fallback=False)
+            digest = hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+            with self.lock:
+                if self.summary and digest == self.last_hash:
+                    # Isi sama (probe berubah tapi CSV tidak) — jangan gambar ulang.
+                    now_str = self._stamp()
+                    s = dict(self.summary["server"])
+                    s.update(refreshedAt=now_str, checkedAt=now_str,
+                             status="ok", error="", refreshSeconds=REFRESH_SECONDS)
+                    self.summary["server"] = s
+                    self.last_probe = probe
+                    self.failures = 0
+                    self.interval = REFRESH_SECONDS
+                    self.status = "ok"
+                    self.error = ""
+                    return
+
+            payload = build_data.build_payload(text)
+            try:
+                build_data.write_data_file(payload)
+            except Exception as file_exc:
+                print(f"[{dt.datetime.now():%H:%M:%S}] Gagal menulis data.js: {file_exc}", flush=True)
+
+            summary = build_area_summary(payload)
+            summary["server"] = {
+                "refreshedAt": self._stamp(),
+                "checkedAt": self._stamp(),
+                "refreshSeconds": REFRESH_SECONDS,
+                "status": "ok",
+                "error": "",
+            }
+            with self.lock:
                 self.summary = summary
-                self.last_success = now
+                self.last_hash = digest
+                self.last_probe = probe
+                self.failures = 0
+                self.interval = REFRESH_SECONDS
                 self.status = "ok"
                 self.error = ""
-                stamp = dt.datetime.now().strftime("%H:%M:%S")
-                print(f"[{stamp}] Data diperbarui: {payload['meta']['salesRows']:,} baris penjualan", flush=True)
-            except Exception as exc:  # keep last good data on screen
+            print(f"[{dt.datetime.now():%H:%M:%S}] Data berubah → {payload['meta']['salesRows']:,} baris penjualan",
+                  flush=True)
+
+        except Exception as exc:  # keep last good data on screen
+            with self.lock:
+                self.failures += 1
+                self.interval = min(MAX_BACKOFF_SECONDS,
+                                    REFRESH_SECONDS * (2 ** min(self.failures - 1, 8)))
                 self.status = "error" if self.summary is None else "stale"
                 self.error = str(exc)
                 if self.summary is not None:
-                    self.summary["server"] = {
-                        "refreshedAt": self.summary["server"]["refreshedAt"],
-                        "refreshSeconds": REFRESH_SECONDS,
-                        "nextRefreshAt": time.time() + 30,
-                        "status": "stale",
-                        "error": self.error,
-                    }
-                print(f"[{dt.datetime.now():%H:%M:%S}] Gagal update sheet: {exc}", flush=True)
+                    s = dict(self.summary["server"])
+                    s.update(status="stale", error=self.error,
+                             refreshSeconds=REFRESH_SECONDS)
+                    self.summary["server"] = s
+            print(f"[{dt.datetime.now():%H:%M:%S}] Gagal update sheet: {exc} "
+                  f"(coba lagi {self.interval}s)", flush=True)
+        finally:
+            with self.lock:
+                self.inflight = False
 
     def current(self) -> dict:
         with self.lock:
             if self.summary is None:
                 return {"server": {"status": self.status, "error": self.error,
-                                   "refreshSeconds": REFRESH_SECONDS,
-                                   "nextRefreshAt": time.time() + 10}}
+                                   "refreshSeconds": REFRESH_SECONDS}}
             return self.summary
 
 
@@ -163,12 +233,12 @@ class Handler(SimpleHTTPRequestHandler):
 def refresher() -> None:
     while True:
         store.refresh()
-        time.sleep(5)
+        time.sleep(0.2)
 
 
 if __name__ == "__main__":
     print(f"Mami Lezza Dashboard → http://localhost:{PORT}", flush=True)
-    print(f"Auto-update tiap {REFRESH_SECONDS} detik (browser mengecek tiap 30 detik)", flush=True)
+    print(f"Auto-update tiap {REFRESH_SECONDS} detik (browser mengecek tiap 1 detik)", flush=True)
     store.refresh(force=True)
     threading.Thread(target=refresher, daemon=True).start()
     ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever()

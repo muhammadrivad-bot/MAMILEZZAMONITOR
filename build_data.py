@@ -18,12 +18,17 @@ import decimal
 import io
 import json
 import re
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
 SHEET_ID = "1Z_g7Z6B_ZVQJyYvhE2kE_tBLoP0J3TsLAY9rNv813t0"
 SHEET_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/edit?usp=sharing"
 CSV_URL = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/export?format=csv&gid=0"
+# Tiny "did anything change?" probe: row count + total qty + total value.
+# ~100 bytes instead of the full ~2.3 MB CSV, so it can be checked every second.
+PROBE_URL = (f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/gviz/tq"
+             "?tqx=out:csv&gid=0&tq=" + urllib.parse.quote("select count(A), sum(J), sum(L)"))
 
 ROOT = Path(__file__).resolve().parent
 OUT = ROOT / "public" / "data.js"
@@ -33,11 +38,17 @@ MONTH_ID = ["Jan", "Feb", "Mar", "Apr", "Mei", "Jun",
             "Jul", "Agu", "Sep", "Okt", "Nov", "Des"]
 
 
-def fetch_csv() -> str:
-    """Fetch CSV from Google Sheets; fall back to the bundled snapshot."""
+def fetch_csv(fallback: bool = True) -> str:
+    """Fetch CSV from Google Sheets.
+
+    fallback=True  → use the bundled snapshot when the sheet is unreachable
+                     (used by build_data.py from the command line).
+    fallback=False → raise instead, so a live server can detect the failure
+                     and back off instead of pretending the data is fresh.
+    """
     try:
         req = urllib.request.Request(CSV_URL, headers={"User-Agent": "Mozilla/5.0"})
-        with urllib.request.urlopen(req, timeout=45) as res:
+        with urllib.request.urlopen(req, timeout=15) as res:
             raw = res.read()
         text = raw.decode("utf-8-sig")
         if "value terjual" not in text.lower():
@@ -48,11 +59,18 @@ def fetch_csv() -> str:
         CACHE.write_bytes(gzip.compress(raw, compresslevel=6))
         return text
     except Exception as exc:  # offline / sheet temporarily unavailable
-        if CACHE.exists():
+        if fallback and CACHE.exists():
             import gzip
             print(f"Sheet fetch failed ({exc}); using bundled snapshot.")
             return gzip.decompress(CACHE.read_bytes()).decode("utf-8-sig")
         raise
+
+
+def probe_sheet() -> str:
+    """Return a ~100-byte signature of the sheet, or raise on network error."""
+    req = urllib.request.Request(PROBE_URL, headers={"User-Agent": "Mozilla/5.0"})
+    with urllib.request.urlopen(req, timeout=10) as res:
+        return res.read().decode("utf-8-sig").strip()
 
 
 def parse_money(value: str) -> int:

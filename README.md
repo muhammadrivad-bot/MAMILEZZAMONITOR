@@ -22,16 +22,20 @@ Opsi:
 
 ```bash
 PORT=8080 python3 server.py                 # ganti port
-REFRESH_SECONDS=600 python3 server.py       # ganti interval update sheet (default 300 detik)
+REFRESH_SECONDS=5 python3 server.py         # ganti interval cek sheet (default 1 detik)
 ```
 
-### Pembaruan data berkala
+### Pembaruan data live (tiap detik)
 
-- Server mengunduh ulang Google Sheet setiap **5 menit** (default) dan menyimpan hasilnya ke `public/data.js`.
-- Browser dashboard Area mengecek API tiap **30 detik** dan otomatis menggambar ulang begitu ada data baru.
-- Tombol **Refresh sekarang** memaksa pengunduhandata langsung.
-- Indikator di kanan atas menampilkan status *Auto-update aktif* dan waktu data terakhir.
-- Jika sheet/server tidak bisa diakses, dashboard tetap memakai data terakhir (status *Update gagal · data terakhir*) atau snapshot lokal (mode offline).
+- Server mengecek Google Sheet **tiap 1 detik** (default). Browser mengecek API juga **tiap 1 detik**, jadi begitu ada input baru di sheet, dashboard langsung berubah.
+- Supaya hemat, server memakai probe kecil (~100 byte: jumlah baris + total qty + total value). CSV penuh (2,3 MB) **hanya diunduh saat ada perubahan**.
+- Waktu di **Data terakhir** menampilkan detik dan terus berjalan — indikator bahwa koneksi live.
+- Jika isi sheet belum berubah, grafik **tidak digambar ulang** (tidak berkedip). `public/data.js` juga hanya ditimpa saat benar-benar ada perubahan.
+- Catatan teknis: probe butuh ~1 detik, lalu unduhan CSV ~2 detik. Jadi data baru muncul paling lambat ~3 detik setelah input di sheet, sedangkan indikator live tetap jalan tiap detik.
+- Kalau Google membatasi request / koneksi putus, server otomatis **backoff** (1 → 2 → 4 → 8 detik … maksimal 5 menit) dan memakai data terakhir. Status berubah jadi *Update gagal · data terakhir*.
+- Tombol **Refresh sekarang** memaksa pengecekan langsung.
+- Catatan: sheet hanya berubah saat ada orang menginput penjualan. Jika belum ada input baru, angka memang tetap sama meski indikator terus berjalan.
+- Mode offline (file dibuka langsung / GitHub Pages) **tidak bisa auto-update** karena tidak ada `server.py`.
 
 Endpoint API: `GET /api/omzet-area`, dan `GET /api/refresh` untuk force refresh.
 

@@ -3,7 +3,7 @@
   'use strict';
 
   const API = '/api/omzet-area';
-  const POLL_MS = 30000;
+  const POLL_MS = 1000;
   const AREA_COLORS = ['#2e9c9c', '#f2654c', '#3d82c4', '#e0a130',
                        '#6a63c9', '#25a879', '#d95e8a', '#7c8fa8'];
 
@@ -51,7 +51,7 @@
   function timeLabel(iso) {
     const d = new Date(iso);
     return isNaN(d) ? String(iso) : d.toLocaleString('id-ID',
-      { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+      { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' });
   }
 
   /* ------------------------------------------------------------ tooltip */
@@ -107,13 +107,14 @@
         DATA._source = 'snapshot';
       } else {
         DATA.server = Object.assign({}, DATA.server, {
-          status: 'stale', error: String(err), nextRefreshAt: Date.now() / 1000 + 30
+          status: 'stale', error: String(err)
         });
       }
     }
     syncControls();
     renderMeta();
-    const sig = (DATA.server.refreshedAt || '') + '|' + DATA.sales.length;
+    // generatedAt hanya berubah saat isi sheet berubah → grafik tidak berkedip.
+    const sig = (DATA.meta.generatedAt || '') + '|' + DATA.sales.length;
     if (sig !== lastDataSignature) { lastDataSignature = sig; renderAll(); }
   }
 
@@ -187,8 +188,9 @@
     el.last.textContent = timeLabel(s.refreshedAt || DATA.meta.generatedAt);
     const offline = DATA._source === 'snapshot' || s.status === 'offline';
     const stale = s.status === 'stale' || s.status === 'error';
-    el.badge.className = 'sync-badge ' + (offline || stale ? 'warn' : 'ok');
     const secs = s.refreshSeconds || 300;
+    el.badge.className = 'sync-badge ' + (offline || stale ? 'warn' : 'ok') +
+      (!offline && !stale && secs <= 2 ? ' live' : '');
     const periodText = secs >= 60 ? Math.round(secs / 60) + ' menit' : secs + ' detik';
     el.badgeText.textContent = offline ? 'Mode offline · snapshot'
       : stale ? 'Update gagal · data terakhir'
