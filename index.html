@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Dashboard omzet penjualan per Area — Mami Lezza, dengan pembaruan data otomatis berkala.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%232e9c9c'/%3E%3Ctext x='32' y='44' font-size='34' font-family='Arial' font-weight='bold' text-anchor='middle' fill='white'%3EA%3C/text%3E%3C/svg%3E">
+  <title>Omzet per Area · Mami Lezza</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <nav class="dash-nav" aria-label="Navigasi dashboard">
+      <a href="mami.html">◀ Dashboard Mami Lezza</a>
+      <span class="dash-nav-title">Omzet per Area</span>
+      <span class="dash-nav-spacer"></span>
+      <span id="sync-badge" class="sync-badge"><span class="sync-dot"></span><span id="sync-text">Menghubungkan…</span></span>
+    </nav>
+
+    <header class="hero hero-area">
+      <div class="hero-main">
+        <div class="hero-mark hero-mark-teal">AR</div>
+        <div>
+          <p class="eyebrow">DASHBOARD UTAMA · UPDATE BERKALA</p>
+          <h1>Omzet per Area</h1>
+          <p class="hero-sub">Omzet <strong>Value Terjual</strong> tiap Area dari data Mami Lezza — Hanarose &amp; Lezza.</p>
+        </div>
+      </div>
+      <div class="hero-meta">
+        <div class="meta-item"><span class="meta-label">Periode data</span><strong id="period-label">—</strong></div>
+        <div class="meta-item"><span class="meta-label">Data terakhir</span><strong id="last-update">—</strong></div>
+        <div class="meta-item"><button type="button" id="refresh-btn" class="btn btn-refresh">↻ Refresh sekarang</button></div>
+      </div>
+    </header>
+
+    <section class="panel filter-panel" aria-label="Filter omzet area">
+      <div class="panel-head filter-head">
+        <div><h2>Filter Data</h2><p id="filter-note">Bulan dan Brand memengaruhi seluruh tampilan. Klik area pada grafik untuk memilih.</p></div>
+        <button type="button" id="reset-btn" class="btn btn-ghost">↺ Reset semua</button>
+      </div>
+      <div class="filter-grid filter-grid-3">
+        <label class="field"><span>Bulan <em>(mm-jual)</em></span><select id="month-filter"><option value="">Semua Bulan</option></select></label>
+        <label class="field"><span>Brand Nama Barang</span><select id="brand-filter">
+          <option value="">Semua Brand</option><option value="Lezza">Lezza</option><option value="Hanarose">Hanarose</option>
+        </select></label>
+        <label class="field"><span>Area</span><select id="area-filter"><option value="">Semua Area</option></select></label>
+      </div>
+      <div id="active-chips" class="chips"></div>
+    </section>
+
+    <section class="kpi-grid" id="kpi-grid" aria-label="Ringkasan omzet"></section>
+
+    <section class="panel chart-panel">
+      <div class="panel-head">
+        <div><h2>Ranking Omzet per Area</h2><p>Klik area untuk melihat detail di bagian bawah. Klik lagi untuk membatalkan.</p></div>
+        <div id="ranking-total" class="legend-inline"></div>
+      </div>
+      <div id="area-ranking" class="chart-body area-ranking"></div>
+    </section>
+
+    <section class="panel chart-panel">
+      <div class="panel-head">
+        <div><h2>Matriks Omzet Area × Bulan</h2><p>Warna lebih gelap = omzet lebih besar. Arahkan kursor untuk nilai pastinya.</p></div>
+        <div class="legend-inline"><span class="heat-legend"><i></i><i></i><i></i><i></i><i></i></span> rendah → tinggi</div>
+      </div>
+      <div id="heatmap" class="heatmap-wrap"></div>
+    </section>
+
+    <section class="grid grid-2">
+      <article class="panel chart-panel">
+        <div class="panel-head">
+          <div><h2>Tren Omzet Bulanan</h2><p id="trend-sub">Area teratas — klik legenda untuk mengganti area.</p></div>
+        </div>
+        <div id="area-trend" class="chart-body"></div>
+      </article>
+      <article class="panel chart-panel">
+        <div class="panel-head">
+          <div><h2>Komposisi Brand</h2><p id="brand-sub">Perbandingan Lezza dan Hanarose.</p></div>
+        </div>
+        <div id="area-brand" class="chart-body brand-body"></div>
+      </article>
+    </section>
+
+    <section class="grid grid-2">
+      <article class="panel chart-panel">
+        <div class="panel-head"><div><h2 id="product-title">Top Nama Barang</h2><p id="product-sub">Produk dengan omzet tertinggi.</p></div></div>
+        <div id="area-products" class="chart-body bars-body"></div>
+      </article>
+      <article class="panel chart-panel">
+        <div class="panel-head"><div><h2 id="mami-title">Top Mami Lezza</h2><p id="mami-sub">Mami dengan omzet tertinggi.</p></div></div>
+        <div id="area-mamis" class="chart-body bars-body"></div>
+      </article>
+    </section>
+
+    <section class="panel table-panel">
+      <div class="panel-head"><div><h2>Rincian Omzet per Area &amp; Brand</h2><p id="table-caption">—</p></div></div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Area</th><th>Brand</th><th class="num">Omzet</th><th class="num">Share</th><th class="num">Qty</th><th class="num">Transaksi</th></tr></thead>
+          <tbody id="table-body"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <footer class="footer">
+      <span><a id="source-link" href="#" target="_blank" rel="noopener">Sumber: Google Sheet ↗</a> · data diperbarui otomatis</span>
+      <span id="footer-meta">—</span>
+    </footer>
+  </div>
+
+  <div id="tooltip" class="tooltip" role="tooltip" aria-hidden="true"></div>
+  <script src="data.js"></script>
+  <script src="area.js"></script>
+</body>
+</html>

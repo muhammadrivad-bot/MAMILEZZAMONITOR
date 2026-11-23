@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Dashboard performa penjualan Mami Lezza: Area, Value Terjual, Nama Mami Lezza, dan Nama Barang (Hanarose & Lezza).">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%23F2654C'/%3E%3Ctext x='32' y='43' font-size='34' font-family='Arial' font-weight='bold' text-anchor='middle' fill='white'%3EM%3C/text%3E%3C/svg%3E">
+  <title>Mami Lezza · Dashboard Penjualan</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <nav class="dash-nav" aria-label="Navigasi dashboard">
+      <span class="dash-nav-title">Dashboard Mami Lezza</span>
+      <span class="dash-nav-spacer"></span>
+      <a href="index.html">Omzet per Area →</a>
+    </nav>
+
+    <header class="hero">
+      <div class="hero-main">
+        <div class="hero-mark">ML</div>
+        <div>
+          <p class="eyebrow">PERFORMA PENJUALAN</p>
+          <h1>Mami Lezza Dashboard</h1>
+          <p class="hero-sub">Analisis <strong>Value Terjual</strong> per Area, Mami Lezza, dan Nama Barang — Hanarose &amp; Lezza.</p>
+        </div>
+      </div>
+      <div class="hero-meta">
+        <div class="meta-item"><span class="meta-label">Periode data</span><strong id="period-label">—</strong></div>
+        <div class="meta-item"><span class="meta-label">Sumber</span><a id="source-link" href="#" target="_blank" rel="noopener">Google Sheet ↗</a></div>
+        <div class="meta-item"><span class="meta-label">Diperbarui</span><strong id="generated-label">—</strong></div>
+      </div>
+    </header>
+
+    <section class="panel filter-panel" aria-label="Filter data">
+      <div class="panel-head filter-head">
+        <div>
+          <h2>Filter Data</h2>
+          <p>Filter memengaruhi seluruh KPI, grafik, pie chart bulanan, dan tabel.</p>
+        </div>
+        <button type="button" id="reset-btn" class="btn btn-ghost">↺ Reset semua</button>
+      </div>
+      <div class="filter-grid">
+        <label class="field">
+          <span>Area</span>
+          <select id="area-filter"><option value="">Semua Area</option></select>
+        </label>
+        <label class="field">
+          <span>Bulan <em>(mm-jual)</em></span>
+          <select id="month-filter"><option value="">Semua Bulan</option></select>
+        </label>
+        <label class="field field-wide">
+          <span>Tanggal <em>(tgl-jual)</em></span>
+          <select id="date-filter"><option value="">Semua Tanggal</option></select>
+        </label>
+        <label class="field">
+          <span>Brand Nama Barang</span>
+          <select id="brand-filter">
+            <option value="">Semua Brand</option>
+            <option value="Lezza">Lezza</option>
+            <option value="Hanarose">Hanarose</option>
+          </select>
+        </label>
+        <label class="field">
+          <span>Nama Mami Lezza</span>
+          <select id="mami-filter"><option value="">Semua Mami Lezza</option></select>
+        </label>
+      </div>
+      <div id="active-chips" class="chips" aria-live="polite"></div>
+    </section>
+
+    <section class="kpi-grid" id="kpi-grid" aria-label="Ringkasan KPI"></section>
+
+    <section class="grid grid-2">
+      <article class="panel chart-panel">
+        <div class="panel-head">
+          <div><h2>Tren Value Terjual per Bulan</h2><p>Klik batang untuk memfilter bulan tertentu.</p></div>
+          <div class="legend-inline"><span class="dot" style="background:var(--accent)"></span>Value Terjual</div>
+        </div>
+        <div id="trend-chart" class="chart-body"></div>
+      </article>
+
+      <article class="panel chart-panel">
+        <div class="panel-head">
+          <div><h2>Kontribusi Brand</h2><p>Pengelompokan Nama Barang: Hanarose vs Lezza.</p></div>
+          <div class="legend-inline"><span class="dot" style="background:var(--accent)"></span>Lezza <span class="dot dot-second" style="background:var(--teal)"></span>Hanarose</div>
+        </div>
+        <div id="brand-chart" class="chart-body brand-body"></div>
+      </article>
+    </section>
+
+    <section class="grid grid-2">
+      <article class="panel chart-panel">
+        <div class="panel-head">
+          <div><h2>Top 8 Mami Lezza</h2><p>Diurutkan dari Value Terjual tertinggi. Klik untuk memfilter.</p></div>
+        </div>
+        <div id="mami-chart" class="chart-body bars-body"></div>
+      </article>
+
+      <article class="panel chart-panel">
+        <div class="panel-head">
+          <div><h2>Top 10 Nama Barang</h2><p>Warna mengikuti brand: merah hangat = Lezza, biru hijau = Hanarose.</p></div>
+        </div>
+        <div id="product-chart" class="chart-body bars-body"></div>
+      </article>
+    </section>
+
+    <section class="panel chart-panel">
+      <div class="panel-head">
+        <div><h2>Performa per Area</h2><p>Klik area untuk memfilter dashboard.</p></div>
+        <div id="area-summary" class="legend-inline"></div>
+      </div>
+      <div id="area-chart" class="chart-body bars-body area-bars"></div>
+    </section>
+
+    <section class="panel" id="pie-section">
+      <div class="panel-head pie-head">
+        <div>
+          <h2>Pie Chart Nama Barang per Bulan</h2>
+          <p>Komposisi produk tiap bulan (top 6 + Lainnya). Pie mengikuti filter Area, Tanggal, Mami, dan Brand.</p>
+        </div>
+        <div class="segmented" role="group" aria-label="Metrik pie chart">
+          <button type="button" class="seg active" data-metric="value">Value Terjual</button>
+          <button type="button" class="seg" data-metric="qty">Qty Terjual</button>
+        </div>
+      </div>
+      <div id="monthly-pies" class="pie-grid"></div>
+    </section>
+
+    <section class="panel table-panel" id="table-section">
+      <div class="panel-head table-head">
+        <div><h2>Rincian Penjualan</h2><p id="table-caption">Agregat per Area · Mami Lezza · Nama Barang</p></div>
+        <div class="table-tools">
+          <input type="search" id="table-search" placeholder="Cari area, mami, atau barang…" aria-label="Cari tabel">
+          <button type="button" id="export-btn" class="btn btn-primary">↓ Ekspor CSV</button>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Area</th>
+              <th>Status</th>
+              <th>Nama Mami Lezza</th>
+              <th>Brand</th>
+              <th>Nama Barang</th>
+              <th class="num">Qty</th>
+              <th class="num sortable" data-sort="value">Value Terjual ▾</th>
+              <th class="num">Share</th>
+            </tr>
+          </thead>
+          <tbody id="table-body"></tbody>
+        </table>
+      </div>
+      <div class="table-footer">
+        <span id="table-count">—</span>
+        <button type="button" id="load-more" class="btn btn-ghost">Tampilkan lebih banyak</button>
+      </div>
+    </section>
+
+    <footer class="footer">
+      <span>Dibuat untuk Mami Lezza · Data dari Google Sheet</span>
+      <span id="footer-meta">—</span>
+    </footer>
+  </div>
+
+  <div id="tooltip" class="tooltip" role="tooltip" aria-hidden="true"></div>
+
+  <script src="data.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
