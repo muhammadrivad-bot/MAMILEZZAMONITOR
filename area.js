@@ -118,6 +118,26 @@
     if (sig !== lastDataSignature) { lastDataSignature = sig; renderAll(); }
   }
 
+  // GitHub Pages / file:// tidak punya API. Ambil ulang data.js (dengan cache
+  // busting) supaya perubahan dari GitHub Actions tetap muncul tanpa refresh.
+  function reloadSnapshot() {
+    const s = document.createElement('script');
+    s.src = 'data.js?_=' + Date.now();
+    s.onload = () => {
+      if (typeof DASH_DATA === 'undefined') return;
+      const next = fallbackFromSheet(DASH_DATA);
+      next._source = 'snapshot';
+      const sig = (next.meta.generatedAt || '') + '|' + next.sales.length;
+      if (sig === lastDataSignature) return;
+      lastDataSignature = sig;
+      DATA = next;
+      syncControls();
+      renderMeta();
+      renderAll();
+    };
+    document.head.appendChild(s);
+  }
+
   function filteredRows() {
     return DATA.sales.filter((r) =>
       (!state.month || DATA.dateMonths[r[0]] === +state.month) &&
@@ -192,12 +212,17 @@
     el.badge.className = 'sync-badge ' + (offline || stale ? 'warn' : 'ok') +
       (!offline && !stale && secs <= 2 ? ' live' : '');
     const periodText = secs >= 60 ? Math.round(secs / 60) + ' menit' : secs + ' detik';
-    el.badgeText.textContent = offline ? 'Mode offline · snapshot'
+    // Di GitHub Pages API tidak ada, tapi data.js di-refresh GitHub Actions.
+    // Bedakan dengan file:// supaya statusnya tidak terlihat seperti error.
+    const onPages = offline && /^https?:$/.test(location.protocol);
+    el.badgeText.textContent = onPages ? 'GitHub Pages · update tiap 5 menit'
+      : offline ? 'Mode offline · snapshot'
       : stale ? 'Update gagal · data terakhir'
       : 'Auto-update aktif · tiap ' + periodText;
-    el.badge.title = s.error || '';
+    el.badge.title = s.error || (onPages ? 'Data diambil ulang tiap 15 detik dari data.js (GitHub Actions)' : '');
     el.footer.textContent = fmt(DATA.meta.salesRows) + ' baris penjualan · ' +
-      fmt(DATA.meta.sheetRows) + ' baris sumber · ' + (DATA._source === 'api' ? 'live via server' : 'snapshot lokal');
+      fmt(DATA.meta.sheetRows) + ' baris sumber · ' +
+      (DATA._source === 'api' ? 'live via server' : onPages ? 'snapshot GitHub Actions' : 'snapshot lokal');
     $('source-link').href = DATA.meta.source;
   }
   /* --------------------------------------------------------------- charts */
@@ -445,6 +470,7 @@
     initControls();
     renderMeta(); renderAll();
     setInterval(() => load(false), POLL_MS);
+    setInterval(() => { if (DATA && DATA._source === 'snapshot') reloadSnapshot(); }, 15000);
   }
   init();
 })();
